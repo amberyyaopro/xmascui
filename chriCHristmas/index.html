@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dreamy Xmas - Wavy Wide Ribbon</title>
+    
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        deep: '#050103',
+                        pink: {
+                            light: '#FFB7C5',
+                            hot: '#FF69B4',
+                        }
+                    },
+                    fontFamily: {
+                        serif: ['"Playfair Display"', 'serif'],
+                    }
+                }
+            }
+        }
+    </script>
+
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "react": "https://esm.sh/react@18.2.0",
+                "react/jsx-runtime": "https://esm.sh/react@18.2.0/jsx-runtime",
+                "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+                "three": "https://esm.sh/three@0.160.0",
+                "@react-three/fiber": "https://esm.sh/@react-three/fiber@8.15.14?external=react,react-dom,three",
+                "@react-three/drei": "https://esm.sh/@react-three/drei@9.96.1?external=react,react-dom,three,@react-three/fiber",
+                "@react-three/postprocessing": "https://esm.sh/@react-three/postprocessing@2.16.0?external=react,react-dom,three,@react-three/fiber",
+                "postprocessing": "https://esm.sh/postprocessing@6.34.1?external=three",
+                "@mediapipe/tasks-vision": "https://esm.sh/@mediapipe/tasks-vision@0.10.9",
+                "uuid": "https://esm.sh/uuid@9.0.1"
+            }
+        }
+    </script>
+    
+    <style>
+        body, html { margin: 0; padding: 0; overflow: hidden; background-color: #050103; }
+        #root { width: 100vw; height: 100vh; }
+        .glass {
+            background: rgba(0, 0, 0, 0.4);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 183, 197, 0.1);
+        }
+        #gesture-cursor {
+            position: fixed;
+            width: 20px;
+            height: 20px;
+            border: 2px solid #FF69B4;
+            border-radius: 50%;
+            pointer-events: none;
+            transform: translate(-50%, -50%);
+            z-index: 50;
+            box-shadow: 0 0 10px #FF69B4;
+            transition: width 0.2s, height 0.2s, background-color 0.2s;
+            display: none; 
+        }
+        #gesture-cursor.pinched {
+            background-color: #FF69B4;
+            width: 10px;
+            height: 10px;
+        }
+        #loader {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #FFB7C5;
+            font-family: 'Playfair Display', serif;
+            font-size: 1.5rem;
+            animation: pulse 1s infinite;
+            z-index: 0;
+            pointer-events: none;
+        }
+        @keyframes pulse { 0% { opacity: 0.5; } 100% { opacity: 1; } }
+    </style>
+</head>
+<body>
+    <div id="loader">Loading Wavy Ribbons...</div>
+    <div id="root"></div>
+
+    <script type="text/babel" data-type="module">
+        import React, { useState, useRef, useEffect, useMemo, Suspense } from 'react';
+        import { createRoot } from 'react-dom/client';
+        import * as THREE from 'three';
+        import { Canvas, useFrame, useThree } from '@react-three/fiber';
+        import { OrbitControls, Environment, ContactShadows, Sparkles, Float } from '@react-three/drei';
+        import { EffectComposer, Bloom, Vignette, Noise } from '@react-three/postprocessing';
+        import { FilesetResolver, HandLandmarker } from '@mediapipe/tasks-vision';
+
+        const LoaderHider = () => {
+            useEffect(() => {
+                const loader = document.getElementById('loader');
+                if(loader) loader.style.display = 'none';
+            }, []);
+            return null;
+        }
+
+        const CONFIG = {
+            colors: ['#FFB7C5', '#FF69B4', '#E0B0FF', '#FFFFFF'],
+            treeHeight: 11,
+            numLayers: 6,
+            maxBaseRadius: 4.5,
+            musicUrl: "./Christmas-Background-Music.mp3"
+        };
+
+        const random = (min, max) => Math.random() * (max - min) + min;
+
+        const Particles = ({ geometry, material, count, type, mode, rotationOffset }) => {
+            const meshRef = useRef();
+            
+            const { treeData, explodeData, colorArray } = useMemo(() => {
+                const tData = [];
+                const eData = [];
+                const cData = new Float32Array(count * 3);
+                const color = new THREE.Color();
+
+                for (let i = 0; i < count; i++) {
+                    // --- TREE SHAPE LOGIC ---
+                    const y = random(-CONFIG.treeHeight/2, CONFIG.treeHeight/2);
+                    const percent = (y + CONFIG.treeHeight/2) / CONFIG.treeHeight; 
+                    
+                    let finalRadius, angle;
+                    const smoothBaseRadius = (1 - percent) * CONFIG.maxBaseRadius + 0.2;
+
+                    if (type === 'ribbon') {
+                        // --- 修改点: 宽带大波浪丝带逻辑 ---
+                        angle = percent * Math.PI * 8; // 4圈保持不变
+
+                        // 1. 计算丝带中心线的基准半径
+                        const centerRadius = smoothBaseRadius + 1.0;
+
+                        // 2. 波浪计算 (Wavy)
+                        // 主波浪: angle * 2.5 大约实现每圈 2.5 个起伏
+                        // 次波浪: angle * 1.3 增加不规则感
+                        const waveOffset = Math.sin(angle * 2.5) * 0.6 + Math.cos(angle * 1.3) * 0.3;
+
+                        // 3. 宽度散射 (Width)
+                        // 在中心线内外随机偏移，形成宽度约 1.2 的带状
+                        // 随高度向上逐渐收窄（percent = 0 底部, 1 顶部）
+                        const taperFactor = 0.85;
+                        const widthSpread = random(-0.6, 0.6) * (1 - percent * taperFactor);
+
+                        // 最终半径 = 中心半径 + 波浪起伏 + 宽度散射
+                        finalRadius = centerRadius + waveOffset + widthSpread;
+
+                        // 为了让带子看起来更有“平坦感”，我们根据它在宽度上的位置稍微倾斜一点Y轴高度
+                        const ribbonTiltY = widthSpread * 0.4;
+
+                        tData.push(
+                            Math.cos(angle) * finalRadius,
+                            y + ribbonTiltY, // 加上倾斜角
+                            Math.sin(angle) * finalRadius
+                        );
+                    } else {
+                        // (树叶逻辑保持不变)
+                        const layerIndex = Math.floor(percent * CONFIG.numLayers);
+                        const clampedLayerIndex = Math.min(layerIndex, CONFIG.numLayers - 1);
+                        const percentInLayer = (percent * CONFIG.numLayers) - clampedLayerIndex;
+                        const layerBaseR = (1 - clampedLayerIndex / CONFIG.numLayers) * CONFIG.maxBaseRadius + 0.5;
+                        finalRadius = layerBaseR * (1 - percentInLayer * 0.7);
+                        finalRadius += random(-0.2, 0.2);
+                        angle = random(0, Math.PI * 2);
+                        tData.push(
+                            Math.cos(angle) * finalRadius,
+                            y,
+                            Math.sin(angle) * finalRadius
+                        );
+                    }
+
+                    // --- EXPLODE SHAPE ---
+                    const r = random(5, 15);
+                    const theta = random(0, Math.PI * 2);
+                    const phi = Math.acos(random(-1, 1));
+                    eData.push(
+                        r * Math.sin(phi) * Math.cos(theta),
+                        r * Math.sin(phi) * Math.sin(theta),
+                        r * Math.cos(phi)
+                    );
+
+                    // Colors
+                    const c = CONFIG.colors[Math.floor(Math.random() * CONFIG.colors.length)];
+                    color.set(c);
+                    if (type === 'leaf') {
+                         const pinkBase = new THREE.Color(Math.random() > 0.5 ? '#FFB7C5' : '#FF69B4');
+                         color.lerp(pinkBase, 0.8); 
+                    }
+                    if (type === 'gem') {
+                        color.set(Math.random() > 0.3 ? '#FFFFFF' : '#E0B0FF');
+                    }
+                    // 丝带保持纯白高亮
+                    if (type === 'ribbon') {
+                        color.set('#FFFFFF');
+                    }
+                    color.toArray(cData, i * 3);
+                }
+                return { treeData: tData, explodeData: eData, colorArray: cData };
+            }, [count, type]);
+
+            const dummy = useMemo(() => new THREE.Object3D(), []);
+            
+            useFrame((state, delta) => {
+                if (!meshRef.current) return;
+                const step = 0.05; 
+                meshRef.current.rotation.y = THREE.MathUtils.lerp(meshRef.current.rotation.y, rotationOffset.current, 0.05);
+                meshRef.current.rotation.y += 0.001;
+
+                for (let i = 0; i < count; i++) {
+                    const tx = mode === 'TREE' ? treeData[i*3] : explodeData[i*3];
+                    const ty = mode === 'TREE' ? treeData[i*3+1] : explodeData[i*3+1];
+                    const tz = mode === 'TREE' ? treeData[i*3+2] : explodeData[i*3+2];
+
+                    meshRef.current.getMatrixAt(i, dummy.matrix);
+                    dummy.matrix.decompose(dummy.position, dummy.quaternion, dummy.scale);
+
+                    dummy.position.x = THREE.MathUtils.lerp(dummy.position.x, tx, step);
+                    dummy.position.y = THREE.MathUtils.lerp(dummy.position.y, ty, step);
+                    dummy.position.z = THREE.MathUtils.lerp(dummy.position.z, tz, step);
+
+                    dummy.rotation.x += delta * 0.2;
+                    dummy.rotation.z += delta * 0.1;
+
+                    const scaleFactor = mode === 'TREE' ? 0.6 : 1.2;
+                    const noise = Math.sin(state.clock.elapsedTime * 2 + i) * 0.2 + 0.8;
+                    
+                    let baseScale = 0.15;
+                    if (type === 'gem') baseScale = 0.25;
+                    // 稍微增大丝带粒子尺寸以填充宽度
+                    if (type === 'ribbon') baseScale = 0.1; 
+
+                    // 如果是丝带，根据目标高度让粒子尺寸随高度减小，营造“顶部更细”的视觉
+                    if (type === 'ribbon') {
+                        const localPercent = (ty + CONFIG.treeHeight/2) / CONFIG.treeHeight;
+                        const sizeTaper = 1 - Math.min(Math.max(localPercent, 0), 1) * 0.8; // 顶部缩小到约20%
+                        dummy.scale.setScalar(noise * scaleFactor * baseScale * sizeTaper);
+                    } else {
+                        dummy.scale.setScalar(noise * scaleFactor * baseScale);
+                    }
+
+                    dummy.updateMatrix();
+                    meshRef.current.setMatrixAt(i, dummy.matrix);
+                }
+                meshRef.current.instanceMatrix.needsUpdate = true;
+            });
+
+            return (
+                <instancedMesh ref={meshRef} args={[geometry, material, count]}>
+                    <instancedBufferAttribute attach="instanceColor" args={[colorArray, 3]} />
+                </instancedMesh>
+            );
+        };
+
+        const TopStar = ({ mode }) => {
+            const group = useRef();
+            useFrame((state) => {
+                const t = state.clock.getElapsedTime();
+                group.current.position.y = THREE.MathUtils.lerp(
+                    group.current.position.y, 
+                    mode === 'TREE' ? CONFIG.treeHeight/2 + 0.5 : 0, 
+                    0.05
+                );
+                group.current.scale.setScalar(
+                    THREE.MathUtils.lerp(group.current.scale.x, mode === 'TREE' ? 1 : 0.01, 0.1)
+                );
+                group.current.rotation.z = -t * 0.5;
+                group.current.rotation.y = t * 0.8;
+            });
+
+            return (
+                <group ref={group}>
+                    <Float speed={5} rotationIntensity={0.5} floatIntensity={0.5}>
+                        <mesh>
+                            <icosahedronGeometry args={[0.7, 0]} />
+                            <meshStandardMaterial color="#FFFFFF" emissive="#E0B0FF" emissiveIntensity={5} roughness={0} metalness={1} toneMapped={false} />
+                        </mesh>
+                        <Sparkles count={50} scale={2} size={4} speed={0.4} opacity={1} color="#E0B0FF" />
+                    </Float>
+                    <pointLight distance={8} intensity={8} color="#E0B0FF" />
+                </group>
+            );
+        }
+
+        const XmasScene = ({ mode, rotationOffset }) => {
+            const octaGeo = useMemo(() => new THREE.OctahedronGeometry(1, 0), []); 
+            const gemGeo = useMemo(() => new THREE.IcosahedronGeometry(0.6, 0), []); 
+            const tetraGeo = useMemo(() => new THREE.TetrahedronGeometry(1, 0), []); 
+            const leafMat = useMemo(() => new THREE.MeshStandardMaterial({ roughness: 0.5, metalness: 0.4, flatShading: true }), []);
+            const gemMat = useMemo(() => new THREE.MeshStandardMaterial({ roughness: 0.1, metalness: 0.9, emissive: "#9966CC", emissiveIntensity: 1, color: "#FFFFFF", flatShading: true }), []);
+            const ribbonMat = useMemo(() => new THREE.MeshStandardMaterial({ color: "#FFFFFF", emissive: "#FFFFFF", emissiveIntensity: 3, toneMapped: false }), []);
+
+            return (
+                <>
+                    <LoaderHider />
+                    <group position={[0, -1, 0]}>
+                        {/* 调整数量分配，增加丝带粒子数以填充宽度 */}
+                        <Particles geometry={octaGeo} material={leafMat} count={4000} type="leaf" mode={mode} rotationOffset={rotationOffset} />
+                        <Particles geometry={gemGeo} material={gemMat} count={2000} type="gem" mode={mode} rotationOffset={rotationOffset} />
+                        <Particles geometry={tetraGeo} material={ribbonMat} count={3000} type="ribbon" mode={mode} rotationOffset={rotationOffset} />
+                        <TopStar mode={mode} />
+                    </group>
+
+                    <ambientLight intensity={0.1} />
+                    <spotLight position={[10, 20, 10]} angle={0.3} penumbra={0.5} intensity={200} color="#FFB7C5" castShadow />
+                    <pointLight position={[-5, -10, 5]} intensity={80} color="#E0B0FF" distance={20} />
+                    <spotLight position={[0, 10, -15]} angle={0.6} penumbra={1} intensity={500} color="#FF69B4" />
+                    <Environment preset="city" background={false} />
+                    <ContactShadows position={[0, -CONFIG.treeHeight/2 - 1, 0]} opacity={0.7} scale={20} blur={4} far={5} color="#FF69B4" />
+                    <EffectComposer disableNormalPass>
+                        <Bloom luminanceThreshold={0.8} mipmapBlur intensity={2.0} radius={0.7} />
+                        <Vignette eskil={false} offset={0.1} darkness={1.2} />
+                        <Noise opacity={0.04} />
+                    </EffectComposer>
+                </>
+            );
+        };
+
+        // --- GestureController 和 App 组件保持不变 ---
+        const GestureController = ({ setMode, rotationRef, isEnabled }) => {
+            const videoRef = useRef(null);
+            const handLandmarkerRef = useRef(null);
+            const runningMode = "VIDEO";
+
+            useEffect(() => {
+                if(!isEnabled) return;
+                const setupMediaPipe = async () => {
+                    const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.9/wasm");
+                    handLandmarkerRef.current = await HandLandmarker.createFromOptions(vision, {
+                        baseOptions: {
+                            modelAssetPath: "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
+                            delegate: "GPU"
+                        },
+                        runningMode: runningMode,
+                        numHands: 1
+                    });
+                    startWebcam();
+                };
+
+                const startWebcam = () => {
+                    const constraints = { video: { width: 320, height: 240 } };
+                    navigator.mediaDevices.getUserMedia(constraints).then((stream) => {
+                        videoRef.current.srcObject = stream;
+                        videoRef.current.addEventListener("loadeddata", predictWebcam);
+                    });
+                };
+
+                let lastVideoTime = -1;
+                const predictWebcam = () => {
+                    if (!handLandmarkerRef.current || !videoRef.current) return;
+                    let startTimeMs = performance.now();
+                    if (videoRef.current.currentTime !== lastVideoTime) {
+                        lastVideoTime = videoRef.current.currentTime;
+                        const result = handLandmarkerRef.current.detectForVideo(videoRef.current, startTimeMs);
+                        
+                        if (result.landmarks && result.landmarks.length > 0) {
+                            const landmarks = result.landmarks[0];
+                            const indexTip = landmarks[8];
+                            const thumbTip = landmarks[4];
+                            
+                            const x = (1 - indexTip.x) * window.innerWidth;
+                            const y = indexTip.y * window.innerHeight;
+                            
+                            const cursor = document.getElementById('gesture-cursor');
+                            if(cursor) {
+                                cursor.style.display = 'block';
+                                cursor.style.left = `${x}px`;
+                                cursor.style.top = `${y}px`;
+                            }
+
+                            const distance = Math.sqrt(Math.pow(indexTip.x - thumbTip.x, 2) + Math.pow(indexTip.y - thumbTip.y, 2));
+                            const isPinch = distance < 0.1;
+
+                            if (cursor) {
+                                if(isPinch) cursor.classList.add('pinched');
+                                else cursor.classList.remove('pinched');
+                            }
+
+                            if (isPinch) setMode('TREE');
+                            else if (distance > 0.15) setMode('EXPLODE');
+                            rotationRef.current = (1 - indexTip.x) * Math.PI * 2;
+                        } else {
+                             const cursor = document.getElementById('gesture-cursor');
+                             if(cursor) cursor.style.display = 'none';
+                        }
+                    }
+                    requestAnimationFrame(predictWebcam);
+                };
+
+                setupMediaPipe();
+            }, [isEnabled]);
+
+            if (!isEnabled) return null;
+            return (
+                <>
+                    <div id="gesture-cursor"></div>
+                    <div className="fixed bottom-4 right-4 w-48 h-36 border-2 border-pink-500 rounded-lg overflow-hidden glass z-40 transform scale-x-[-1]">
+                        <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover"></video>
+                        <div className="absolute top-0 right-0 p-1 bg-black text-white text-[10px] transform scale-x-[-1]">AI FEED</div>
+                    </div>
+                </>
+            );
+        };
+
+        const App = () => {
+            const [started, setStarted] = useState(false);
+            const [gestureMode, setGestureMode] = useState(false);
+            const [mode, setMode] = useState('TREE'); 
+            const [muted, setMuted] = useState(false);
+            const rotationRef = useRef(0);
+            const audioRef = useRef(null);
+
+            const handleStart = (withGesture) => {
+                setStarted(true);
+                setGestureMode(withGesture);
+                if (audioRef.current) {
+                    audioRef.current.play().catch(e => console.log("Audio autoplay blocked"));
+                    audioRef.current.volume = 0.5;
+                }
+            };
+
+            const toggleMode = () => {
+                if (!gestureMode) setMode(prev => prev === 'TREE' ? 'EXPLODE' : 'TREE');
+            };
+
+            const toggleMute = (e) => {
+                e.stopPropagation();
+                setMuted(!muted);
+                if (audioRef.current) audioRef.current.muted = !muted;
+            }
+
+            return (
+                <div className="w-full h-full relative" onClick={toggleMode}>
+                    <audio ref={audioRef} loop src={CONFIG.musicUrl} />
+                    <Canvas 
+                        camera={{ position: [0, 0, 22], fov: 45 }}
+                        gl={{ antialias: false, toneMapping: THREE.ReinhardToneMapping, toneMappingExposure: 1.2 }}
+                        dpr={[1, 1.5]}
+                    >
+                        <Suspense fallback={null}>
+                            <XmasScene mode={mode} rotationOffset={rotationRef} />
+                        </Suspense>
+                    </Canvas>
+                    <GestureController isEnabled={gestureMode} setMode={setMode} rotationRef={rotationRef} />
+                    <div className="absolute top-0 left-0 w-full h-full pointer-events-none flex flex-col justify-between p-8">
+                        <header className="flex justify-between items-start pointer-events-auto">
+                            <div>
+                                <h1 className="text-pink-light font-serif text-4xl md:text-6xl tracking-wider drop-shadow-[0_0_10px_rgba(255,105,180,0.8)]">DREAMY XMAS</h1>
+                                <p className="text-pink-300 text-sm mt-2 tracking-widest opacity-80">{gestureMode ? 'AI GESTURE ACTIVE' : 'CLICK TO INTERACT'}</p>
+                            </div>
+                            <button onClick={toggleMute} className="glass text-pink-300 p-3 rounded-full hover:bg-pink-500/20 transition">{muted ? '🔇' : '🔊'}</button>
+                        </header>
+                        {gestureMode && (
+                             <div className="absolute top-1/2 left-4 transform -translate-y-1/2 glass p-4 rounded-lg text-pink-200 text-xs space-y-2 max-w-[200px]">
+                                <p><span className="font-bold text-white">PINCH</span> ✊ <br/> Form Tree</p>
+                                <p><span className="font-bold text-white">OPEN</span> 🖐️ <br/> Explode</p>
+                                <p><span className="font-bold text-white">MOVE</span> ↔️ <br/> Rotate</p>
+                            </div>
+                        )}
+                    </div>
+                    {!started && (
+                        <div className="absolute inset-0 z-50 flex items-center justify-center bg-deep/90 backdrop-blur-md pointer-events-auto">
+                            <div className="text-center space-y-8">
+                                <h1 className="text-6xl md:text-8xl font-serif text-transparent bg-clip-text bg-gradient-to-r from-pink-300 to-purple-400 animate-pulse">Ready?</h1>
+                                <div className="flex gap-4 justify-center">
+                                    <button onClick={() => handleStart(false)} className="px-8 py-3 bg-pink-600 hover:bg-pink-500 text-white font-serif rounded-sm tracking-widest transition shadow-[0_0_20px_rgba(255,105,180,0.5)]">ENTER</button>
+                                    <button onClick={() => handleStart(true)} className="px-8 py-3 border border-pink-500 text-pink-300 hover:bg-pink-500/20 font-serif rounded-sm tracking-widest transition">AI GESTURE MODE 📷</button>
+                                </div>
+                                <p className="text-gray-500 text-xs mt-4">For gesture mode, camera access is required.</p>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const root = createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
