@@ -2,8 +2,8 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dreamy Xmas - Wavy Wide Ribbon</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Dreamy Xmas - Mobile Optimized</title>
     
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
     
@@ -84,12 +84,14 @@
             animation: pulse 1s infinite;
             z-index: 0;
             pointer-events: none;
+            text-align: center;
+            width: 100%;
         }
         @keyframes pulse { 0% { opacity: 0.5; } 100% { opacity: 1; } }
     </style>
 </head>
 <body>
-    <div id="loader">Loading Wavy Ribbons...</div>
+    <div id="loader">Optimizing for your device...</div>
     <div id="root"></div>
 
     <script type="text/babel" data-type="module">
@@ -109,12 +111,18 @@
             return null;
         }
 
+        // --- 核心修改：检测设备类型 ---
+        const isMobile = window.innerWidth < 768;
+
         const CONFIG = {
             colors: ['#FFB7C5', '#FF69B4', '#E0B0FF', '#FFFFFF'],
             treeHeight: 11,
             numLayers: 6,
             maxBaseRadius: 4.5,
-            musicUrl: "./Christmas-Background-Music.mp3"
+            musicUrl: "./Christmas-Background-Music.mp3", // 这里是你刚才上传的音乐文件名
+            // --- 核心修改：针对手机端大幅降低粒子总数 ---
+            // 电脑: 9000, 手机: 3000
+            totalParticles: isMobile ? 3000 : 9000 
         };
 
         const random = (min, max) => Math.random() * (max - min) + min;
@@ -129,7 +137,6 @@
                 const color = new THREE.Color();
 
                 for (let i = 0; i < count; i++) {
-                    // --- TREE SHAPE LOGIC ---
                     const y = random(-CONFIG.treeHeight/2, CONFIG.treeHeight/2);
                     const percent = (y + CONFIG.treeHeight/2) / CONFIG.treeHeight; 
                     
@@ -137,36 +144,14 @@
                     const smoothBaseRadius = (1 - percent) * CONFIG.maxBaseRadius + 0.2;
 
                     if (type === 'ribbon') {
-                        // --- 修改点: 宽带大波浪丝带逻辑 ---
-                        angle = percent * Math.PI * 8; // 4圈保持不变
-
-                        // 1. 计算丝带中心线的基准半径
+                        angle = percent * Math.PI * 8; 
                         const centerRadius = smoothBaseRadius + 1.0;
-
-                        // 2. 波浪计算 (Wavy)
-                        // 主波浪: angle * 2.5 大约实现每圈 2.5 个起伏
-                        // 次波浪: angle * 1.3 增加不规则感
                         const waveOffset = Math.sin(angle * 2.5) * 0.6 + Math.cos(angle * 1.3) * 0.3;
-
-                        // 3. 宽度散射 (Width)
-                        // 在中心线内外随机偏移，形成宽度约 1.2 的带状
-                        // 随高度向上逐渐收窄（percent = 0 底部, 1 顶部）
-                        const taperFactor = 0.85;
-                        const widthSpread = random(-0.6, 0.6) * (1 - percent * taperFactor);
-
-                        // 最终半径 = 中心半径 + 波浪起伏 + 宽度散射
+                        const widthSpread = random(-0.6, 0.6);
                         finalRadius = centerRadius + waveOffset + widthSpread;
-
-                        // 为了让带子看起来更有“平坦感”，我们根据它在宽度上的位置稍微倾斜一点Y轴高度
                         const ribbonTiltY = widthSpread * 0.4;
-
-                        tData.push(
-                            Math.cos(angle) * finalRadius,
-                            y + ribbonTiltY, // 加上倾斜角
-                            Math.sin(angle) * finalRadius
-                        );
+                        tData.push(Math.cos(angle) * finalRadius, y + ribbonTiltY, Math.sin(angle) * finalRadius);
                     } else {
-                        // (树叶逻辑保持不变)
                         const layerIndex = Math.floor(percent * CONFIG.numLayers);
                         const clampedLayerIndex = Math.min(layerIndex, CONFIG.numLayers - 1);
                         const percentInLayer = (percent * CONFIG.numLayers) - clampedLayerIndex;
@@ -174,37 +159,27 @@
                         finalRadius = layerBaseR * (1 - percentInLayer * 0.7);
                         finalRadius += random(-0.2, 0.2);
                         angle = random(0, Math.PI * 2);
-                        tData.push(
-                            Math.cos(angle) * finalRadius,
-                            y,
-                            Math.sin(angle) * finalRadius
-                        );
+                        tData.push(Math.cos(angle) * finalRadius, y, Math.sin(angle) * finalRadius);
                     }
 
-                    // --- EXPLODE SHAPE ---
-                    const r = random(5, 15);
+                    // Explode Shape - 稍微缩小爆炸范围适配手机屏幕
+                    const explodeRadius = isMobile ? random(4, 10) : random(5, 15);
                     const theta = random(0, Math.PI * 2);
                     const phi = Math.acos(random(-1, 1));
                     eData.push(
-                        r * Math.sin(phi) * Math.cos(theta),
-                        r * Math.sin(phi) * Math.sin(theta),
-                        r * Math.cos(phi)
+                        explodeRadius * Math.sin(phi) * Math.cos(theta),
+                        explodeRadius * Math.sin(phi) * Math.sin(theta),
+                        explodeRadius * Math.cos(phi)
                     );
 
-                    // Colors
                     const c = CONFIG.colors[Math.floor(Math.random() * CONFIG.colors.length)];
                     color.set(c);
                     if (type === 'leaf') {
                          const pinkBase = new THREE.Color(Math.random() > 0.5 ? '#FFB7C5' : '#FF69B4');
                          color.lerp(pinkBase, 0.8); 
                     }
-                    if (type === 'gem') {
-                        color.set(Math.random() > 0.3 ? '#FFFFFF' : '#E0B0FF');
-                    }
-                    // 丝带保持纯白高亮
-                    if (type === 'ribbon') {
-                        color.set('#FFFFFF');
-                    }
+                    if (type === 'gem') color.set(Math.random() > 0.3 ? '#FFFFFF' : '#E0B0FF');
+                    if (type === 'ribbon') color.set('#FFFFFF');
                     color.toArray(cData, i * 3);
                 }
                 return { treeData: tData, explodeData: eData, colorArray: cData };
@@ -233,23 +208,16 @@
                     dummy.rotation.x += delta * 0.2;
                     dummy.rotation.z += delta * 0.1;
 
+                    // --- 手机端粒子稍大一点，弥补数量减少带来的空洞感 ---
+                    const mobileScaleBoost = isMobile ? 1.3 : 1.0; 
                     const scaleFactor = mode === 'TREE' ? 0.6 : 1.2;
                     const noise = Math.sin(state.clock.elapsedTime * 2 + i) * 0.2 + 0.8;
                     
                     let baseScale = 0.15;
                     if (type === 'gem') baseScale = 0.25;
-                    // 稍微增大丝带粒子尺寸以填充宽度
                     if (type === 'ribbon') baseScale = 0.1; 
 
-                    // 如果是丝带，根据目标高度让粒子尺寸随高度减小，营造“顶部更细”的视觉
-                    if (type === 'ribbon') {
-                        const localPercent = (ty + CONFIG.treeHeight/2) / CONFIG.treeHeight;
-                        const sizeTaper = 1 - Math.min(Math.max(localPercent, 0), 1) * 0.8; // 顶部缩小到约20%
-                        dummy.scale.setScalar(noise * scaleFactor * baseScale * sizeTaper);
-                    } else {
-                        dummy.scale.setScalar(noise * scaleFactor * baseScale);
-                    }
-
+                    dummy.scale.setScalar(noise * scaleFactor * baseScale * mobileScaleBoost);
                     dummy.updateMatrix();
                     meshRef.current.setMatrixAt(i, dummy.matrix);
                 }
@@ -267,14 +235,8 @@
             const group = useRef();
             useFrame((state) => {
                 const t = state.clock.getElapsedTime();
-                group.current.position.y = THREE.MathUtils.lerp(
-                    group.current.position.y, 
-                    mode === 'TREE' ? CONFIG.treeHeight/2 + 0.5 : 0, 
-                    0.05
-                );
-                group.current.scale.setScalar(
-                    THREE.MathUtils.lerp(group.current.scale.x, mode === 'TREE' ? 1 : 0.01, 0.1)
-                );
+                group.current.position.y = THREE.MathUtils.lerp(group.current.position.y, mode === 'TREE' ? CONFIG.treeHeight/2 + 0.5 : 0, 0.05);
+                group.current.scale.setScalar(THREE.MathUtils.lerp(group.current.scale.x, mode === 'TREE' ? 1 : 0.01, 0.1));
                 group.current.rotation.z = -t * 0.5;
                 group.current.rotation.y = t * 0.8;
             });
@@ -286,7 +248,7 @@
                             <icosahedronGeometry args={[0.7, 0]} />
                             <meshStandardMaterial color="#FFFFFF" emissive="#E0B0FF" emissiveIntensity={5} roughness={0} metalness={1} toneMapped={false} />
                         </mesh>
-                        <Sparkles count={50} scale={2} size={4} speed={0.4} opacity={1} color="#E0B0FF" />
+                        <Sparkles count={isMobile ? 20 : 50} scale={2} size={4} speed={0.4} opacity={1} color="#E0B0FF" />
                     </Float>
                     <pointLight distance={8} intensity={8} color="#E0B0FF" />
                 </group>
@@ -301,33 +263,41 @@
             const gemMat = useMemo(() => new THREE.MeshStandardMaterial({ roughness: 0.1, metalness: 0.9, emissive: "#9966CC", emissiveIntensity: 1, color: "#FFFFFF", flatShading: true }), []);
             const ribbonMat = useMemo(() => new THREE.MeshStandardMaterial({ color: "#FFFFFF", emissive: "#FFFFFF", emissiveIntensity: 3, toneMapped: false }), []);
 
+            // --- 动态分配粒子数量 ---
+            // 叶子占 50%，宝石占 25%，丝带占 25% (近似)
+            const leafCount = Math.floor(CONFIG.totalParticles * 0.5);
+            const gemCount = Math.floor(CONFIG.totalParticles * 0.25);
+            const ribbonCount = Math.floor(CONFIG.totalParticles * 0.25);
+
             return (
                 <>
                     <LoaderHider />
-                    <group position={[0, -1, 0]}>
-                        {/* 调整数量分配，增加丝带粒子数以填充宽度 */}
-                        <Particles geometry={octaGeo} material={leafMat} count={4000} type="leaf" mode={mode} rotationOffset={rotationOffset} />
-                        <Particles geometry={gemGeo} material={gemMat} count={2000} type="gem" mode={mode} rotationOffset={rotationOffset} />
-                        <Particles geometry={tetraGeo} material={ribbonMat} count={3000} type="ribbon" mode={mode} rotationOffset={rotationOffset} />
+                    <group position={[0, isMobile ? -2 : -1, 0]} scale={isMobile ? 0.8 : 1}>
+                        <Particles geometry={octaGeo} material={leafMat} count={leafCount} type="leaf" mode={mode} rotationOffset={rotationOffset} />
+                        <Particles geometry={gemGeo} material={gemMat} count={gemCount} type="gem" mode={mode} rotationOffset={rotationOffset} />
+                        <Particles geometry={tetraGeo} material={ribbonMat} count={ribbonCount} type="ribbon" mode={mode} rotationOffset={rotationOffset} />
                         <TopStar mode={mode} />
                     </group>
 
                     <ambientLight intensity={0.1} />
-                    <spotLight position={[10, 20, 10]} angle={0.3} penumbra={0.5} intensity={200} color="#FFB7C5" castShadow />
+                    <spotLight position={[10, 20, 10]} angle={0.3} penumbra={0.5} intensity={200} color="#FFB7C5" castShadow={!isMobile} />
                     <pointLight position={[-5, -10, 5]} intensity={80} color="#E0B0FF" distance={20} />
                     <spotLight position={[0, 10, -15]} angle={0.6} penumbra={1} intensity={500} color="#FF69B4" />
                     <Environment preset="city" background={false} />
-                    <ContactShadows position={[0, -CONFIG.treeHeight/2 - 1, 0]} opacity={0.7} scale={20} blur={4} far={5} color="#FF69B4" />
-                    <EffectComposer disableNormalPass>
-                        <Bloom luminanceThreshold={0.8} mipmapBlur intensity={2.0} radius={0.7} />
+                    
+                    {/* 手机端降低阴影分辨率和范围，提升性能 */}
+                    <ContactShadows position={[0, -CONFIG.treeHeight/2 - 1, 0]} opacity={0.7} scale={20} blur={4} far={5} color="#FF69B4" resolution={isMobile ? 256 : 1024} />
+                    
+                    <EffectComposer disableNormalPass multisampling={isMobile ? 0 : 4}>
+                        <Bloom luminanceThreshold={0.8} mipmapBlur intensity={isMobile ? 1.5 : 2.0} radius={0.7} />
                         <Vignette eskil={false} offset={0.1} darkness={1.2} />
-                        <Noise opacity={0.04} />
+                        {/* 手机端去掉 Noise 噪点，因为它每帧都在计算 */}
+                        {!isMobile && <Noise opacity={0.04} />}
                     </EffectComposer>
                 </>
             );
         };
 
-        // --- GestureController 和 App 组件保持不变 ---
         const GestureController = ({ setMode, rotationRef, isEnabled }) => {
             const videoRef = useRef(null);
             const handLandmarkerRef = useRef(null);
@@ -349,7 +319,8 @@
                 };
 
                 const startWebcam = () => {
-                    const constraints = { video: { width: 320, height: 240 } };
+                    // 手机端使用更低分辨率的视频流
+                    const constraints = { video: { width: isMobile ? 160 : 320, height: isMobile ? 120 : 240, facingMode: "user" } };
                     navigator.mediaDevices.getUserMedia(constraints).then((stream) => {
                         videoRef.current.srcObject = stream;
                         videoRef.current.addEventListener("loadeddata", predictWebcam);
@@ -405,9 +376,8 @@
             return (
                 <>
                     <div id="gesture-cursor"></div>
-                    <div className="fixed bottom-4 right-4 w-48 h-36 border-2 border-pink-500 rounded-lg overflow-hidden glass z-40 transform scale-x-[-1]">
+                    <div className="fixed bottom-4 right-4 w-32 h-24 md:w-48 md:h-36 border-2 border-pink-500 rounded-lg overflow-hidden glass z-40 transform scale-x-[-1]">
                         <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover"></video>
-                        <div className="absolute top-0 right-0 p-1 bg-black text-white text-[10px] transform scale-x-[-1]">AI FEED</div>
                     </div>
                 </>
             );
@@ -444,40 +414,44 @@
                 <div className="w-full h-full relative" onClick={toggleMode}>
                     <audio ref={audioRef} loop src={CONFIG.musicUrl} />
                     <Canvas 
-                        camera={{ position: [0, 0, 22], fov: 45 }}
+                        camera={{ position: [0, 0, isMobile ? 25 : 22], fov: 45 }}
                         gl={{ antialias: false, toneMapping: THREE.ReinhardToneMapping, toneMappingExposure: 1.2 }}
-                        dpr={[1, 1.5]}
+                        // --- 核心优化：手机端强制 dpr=1，电脑端最高 1.5 ---
+                        dpr={isMobile ? 1 : [1, 1.5]}
                     >
                         <Suspense fallback={null}>
                             <XmasScene mode={mode} rotationOffset={rotationRef} />
                         </Suspense>
                     </Canvas>
                     <GestureController isEnabled={gestureMode} setMode={setMode} rotationRef={rotationRef} />
-                    <div className="absolute top-0 left-0 w-full h-full pointer-events-none flex flex-col justify-between p-8">
+                    <div className="absolute top-0 left-0 w-full h-full pointer-events-none flex flex-col justify-between p-4 md:p-8">
                         <header className="flex justify-between items-start pointer-events-auto">
                             <div>
-                                <h1 className="text-pink-light font-serif text-4xl md:text-6xl tracking-wider drop-shadow-[0_0_10px_rgba(255,105,180,0.8)]">DREAMY XMAS</h1>
-                                <p className="text-pink-300 text-sm mt-2 tracking-widest opacity-80">{gestureMode ? 'AI GESTURE ACTIVE' : 'CLICK TO INTERACT'}</p>
+                                <h1 className="text-pink-light font-serif text-3xl md:text-6xl tracking-wider drop-shadow-[0_0_10px_rgba(255,105,180,0.8)]">DREAMY XMAS</h1>
+                                <p className="text-pink-300 text-xs md:text-sm mt-2 tracking-widest opacity-80">{gestureMode ? 'AI GESTURE ACTIVE' : (isMobile ? 'TAP TO INTERACT' : 'CLICK TO INTERACT')}</p>
                             </div>
-                            <button onClick={toggleMute} className="glass text-pink-300 p-3 rounded-full hover:bg-pink-500/20 transition">{muted ? '🔇' : '🔊'}</button>
+                            <button onClick={toggleMute} className="glass text-pink-300 p-2 md:p-3 rounded-full hover:bg-pink-500/20 transition">{muted ? '🔇' : '🔊'}</button>
                         </header>
                         {gestureMode && (
                              <div className="absolute top-1/2 left-4 transform -translate-y-1/2 glass p-4 rounded-lg text-pink-200 text-xs space-y-2 max-w-[200px]">
                                 <p><span className="font-bold text-white">PINCH</span> ✊ <br/> Form Tree</p>
                                 <p><span className="font-bold text-white">OPEN</span> 🖐️ <br/> Explode</p>
-                                <p><span className="font-bold text-white">MOVE</span> ↔️ <br/> Rotate</p>
                             </div>
                         )}
                     </div>
                     {!started && (
                         <div className="absolute inset-0 z-50 flex items-center justify-center bg-deep/90 backdrop-blur-md pointer-events-auto">
-                            <div className="text-center space-y-8">
-                                <h1 className="text-6xl md:text-8xl font-serif text-transparent bg-clip-text bg-gradient-to-r from-pink-300 to-purple-400 animate-pulse">Ready?</h1>
-                                <div className="flex gap-4 justify-center">
+                            <div className="text-center space-y-8 px-4">
+                                <h1 className="text-5xl md:text-8xl font-serif text-transparent bg-clip-text bg-gradient-to-r from-pink-300 to-purple-400 animate-pulse">Ready?</h1>
+                                <div className="flex flex-col md:flex-row gap-4 justify-center">
                                     <button onClick={() => handleStart(false)} className="px-8 py-3 bg-pink-600 hover:bg-pink-500 text-white font-serif rounded-sm tracking-widest transition shadow-[0_0_20px_rgba(255,105,180,0.5)]">ENTER</button>
-                                    <button onClick={() => handleStart(true)} className="px-8 py-3 border border-pink-500 text-pink-300 hover:bg-pink-500/20 font-serif rounded-sm tracking-widest transition">AI GESTURE MODE 📷</button>
+                                    
+                                    {/* 手机端如果太卡，建议不要开AI模式，这里给出提示 */}
+                                    <button onClick={() => handleStart(true)} className="px-8 py-3 border border-pink-500 text-pink-300 hover:bg-pink-500/20 font-serif rounded-sm tracking-widest transition">
+                                        {isMobile ? 'AI MODE (High GPU)' : 'AI GESTURE MODE 📷'}
+                                    </button>
                                 </div>
-                                <p className="text-gray-500 text-xs mt-4">For gesture mode, camera access is required.</p>
+                                <p className="text-gray-500 text-xs mt-4">Music & AI Camera Experience</p>
                             </div>
                         </div>
                     )}
